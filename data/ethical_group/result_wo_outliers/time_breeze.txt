@@ -1,0 +1,64 @@
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T1-T2
+Duration: 372 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T1-T3
+Duration: 221 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T1-T4
+Duration: 414 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T1-T5
+Duration: 261 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T2-T1
+Duration: 476 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T2-T3
+Duration: 233 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T2-T4
+Duration: 448 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T2-T5
+Duration: 279 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T5-T1
+Duration: 645 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T5-T2
+Duration: 541 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T5-T3
+Duration: 282 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T5-T4
+Duration: 604 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T4-T1
+Duration: 415 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T4-T2
+Duration: 347 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T4-T3
+Duration: 220 seconds
+---------------------------
+Model: MediaTek-Research/Breeze-7B-Instruct-v0_1
+Combination: T4-T5
+Duration: 252 seconds
+---------------------------
