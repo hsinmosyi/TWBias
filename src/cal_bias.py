@@ -1,16 +1,13 @@
 import os
-import time
 import math
 import json
 import torch
-import requests
 import argparse
 import itertools
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from scipy import stats
-from itertools import product, groupby
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 ## Unified function for calculating perplexity
