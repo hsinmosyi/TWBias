@@ -1,7 +1,4 @@
-# MODEL="taide/TAIDE-LX-7B-Chat"
-# MODEL="Qwen/Qwen2.5-7B-Instruct"
-MODEL="google/gemma-2-9b-it"
-# MODEL="meta-llama/Llama-3.1-8B-Instruct"
+MODEL="taide/TAIDE-LX-7B-Chat"
 
 echo Model: "$MODEL"
 echo Combination: "T1-T2"
