@@ -1,4 +1,5 @@
 import os
+import time
 import math
 import json
 import torch
@@ -19,26 +20,33 @@ def get_perplexity(prompt: str, sentence: str, model = None, tokenizer = None):
     else:
         # Get tokenized prompt length
         # import pdb; pdb.set_trace()
-        if prompt:
-            prompt_encodings = tokenizer(prompt, return_tensors='pt')
+        if prompt: # prompt template has added special tokens
+            prompt_encodings = tokenizer(prompt, return_tensors='pt', add_special_tokens=False)
             tokenized_prompt_len = len(prompt_encodings['input_ids'][0])
+            text = prompt + sentence
+            encodings = tokenizer(text, return_tensors='pt', add_special_tokens=False)
+            input_ids = encodings['input_ids']
         else:
             tokenized_prompt_len = 0
-        
+            text = sentence
+            encodings = tokenizer(text, return_tensors='pt')
+            input_ids = encodings['input_ids']
+
         # Get ppl with prompt
-        text = prompt + sentence
-        encodings = tokenizer(text, return_tensors='pt')
-        # print(encodings)
-        input_ids = encodings['input_ids']
         labels = input_ids.clone()
         labels[:,:tokenized_prompt_len] = -100
+        
+        # Move tensors to model.device
+        encodings = {key: value.to(model.device) for key, value in encodings.items()}
+        labels = labels.to(model.device)
+        
         outputs = model(**encodings, labels=labels)
         loss = outputs.loss
     return math.exp(loss)
 
 ## Function to replace words in sentence
 def replace_target_words(sentence, target_dict):
-
+    
     # Identify all keywords in the sentence and their corresponding replacements
     applicable_replacements = [(key, value) for key, values in target_dict.items() for value in values if key in sentence]
 
@@ -47,7 +55,7 @@ def replace_target_words(sentence, target_dict):
     for origin_word, replace_word in applicable_replacements:
         replaced_sentence = sentence.replace(origin_word, replace_word)
         replaced_sentences.append(replaced_sentence)
-    
+
     return replaced_sentences
 
 ## Function to calculate perplexity in every bias sentence
@@ -63,11 +71,15 @@ def calculate_perplexity(df, target_dict, model = None, tokenizer = None, prompt
         ppl_list = []
         for replaced_sentence in replaced_sentences:
             ppl_list.append(get_perplexity(prompt, replaced_sentence, model, tokenizer))
+            # ppl_list.append(10)
         idx = np.argmin(ppl_list) # Select the smallest PPL as the replaced_sentence to be compared
         # print('ppl_list:',ppl_list)
         # print('idx:', idx)
         df.loc[index, 'replaced_sentence'] = replaced_sentences[idx]
-        df.loc[index, 'replace_ppl'] = ppl_list[idx]
+        # df.loc[index, 'replace_ppl'] = ppl_list[idx]
+        
+        ## Fix: change min ppl to mean ppl
+        df.loc[index, 'replace_ppl'] = np.mean(ppl_list)
         
         ## Calculate the difference between original sentence and replace sentence
         df.loc[index, 'delta_ppl'] = df.loc[index, 'replace_ppl'] - df.loc[index, 'origin_ppl']
@@ -80,11 +92,11 @@ def get_outliers(df):
     o_std, r_std = np.std(o_list), np.std(r_list)
     
     # df[df['origin_ppl']>o_mean+3*o_std][df['origin_ppl']<o_mean-3*o_std][df['replace_ppl']>r_mean+3*r_std][df['replace_ppl']<r_mean-3*r_std]
-    condition_o = (df['origin_ppl'] > o_mean + 3 * o_std) & (df['origin_ppl'] < o_mean - 3 * o_std)
-    condition_r = (df['replace_ppl'] > r_mean + 3 * r_std) & (df['replace_ppl'] < r_mean - 3 * r_std)
+    condition_o = (df['origin_ppl'] > o_mean + 3 * o_std) | (df['origin_ppl'] < o_mean - 3 * o_std)
+    condition_r = (df['replace_ppl'] > r_mean + 3 * r_std) | (df['replace_ppl'] < r_mean - 3 * r_std)
     
-    outlier_df = df[condition_o & condition_r]
-    filtered_df = df[~(condition_o & condition_r)]
+    outlier_df = df[condition_o | condition_r]
+    filtered_df = df[~(condition_o | condition_r)]
     
     return outlier_df, filtered_df
 
@@ -131,19 +143,43 @@ def perform_ttest(group):
                       'count': count, 
                       'delta_ratio': delta_ratio})
 
+##
+def analyze_data(args, df_with_ppl):
+    ## Construct dictionaries for attribute categories and type (positive)
+    attribute_df = pd.read_csv(args.attribute_category_path, dtype={'Type': str})
+    attribute_category_dict = attribute_df.set_index('Content')['Category'].to_dict()
+    attribute_type_dict = attribute_df.set_index('Content')['Type'].to_dict()
+    ## Remove outliers
+    df_outliers, df_no_outliers = get_outliers(df_with_ppl)
+    
+    df_category = add_categories_type(df_no_outliers, attribute_category_dict, attribute_type_dict)
+    
+    ## Calculate p-value, t-value for category analysis
+    result_category = df_category.groupby(['Category', 'Type']).apply(perform_ttest)
+    # print(result_category)
+    
+    result_category_all = df_category.groupby(['Category']).apply(perform_ttest)
+    
+    ## Calculate p-value, t-value for toxicity analysis
+    result_toxicity = df_no_outliers.groupby(['Toxicity']).apply(perform_ttest)
+    result_all = perform_ttest(df_no_outliers)
+    result_toxicity = result_toxicity._append(result_all, ignore_index=True)
+    result_toxicity.index = ['0', '1', 'All']
+    # print(result_toxicity)
+    
+    model_name = args.model_path.split('/')[-1]
+    target_group_name = os.path.basename(args.attribute_category_path).split('-')[0]
+    result_category.to_csv(f"{args.result_dir}/{model_name}/{target_group_name}_{args.replace_target}/{model_name}_{target_group_name}_{args.replace_target}_category_{prompt_index}.csv")
+    result_category_all.to_csv(f"{args.result_dir}/{model_name}/{target_group_name}_{args.replace_target}/{model_name}_{target_group_name}_{args.replace_target}_category_all_{prompt_index}.csv")
+    result_toxicity.to_csv(f"{args.result_dir}/{model_name}/{target_group_name}_{args.replace_target}/{model_name}_{target_group_name}_{args.replace_target}_toxicity_{prompt_index}.csv")
+
+
 ## Main function
 def main(args):
     
     ## Read bias sentences
     df = pd.read_csv(args.bias_sentences_path, dtype={'T-A Combination': str})
     target_pair = pd.read_csv(args.target_pair_path)
-
-    ## Load prompt template
-    prompt_template = json.load(open(args.prompt_template_path))
-    if args.prompt_template:
-        prompt = prompt_template[args.prompt_template]
-    else:
-        prompt = ""
     
     ## Some targets need to be arranged to form target pairs 
     if args.target_combination:
@@ -159,71 +195,54 @@ def main(args):
     target_dict = target_pair.groupby(args.origin_target)[args.replace_target].agg(list).to_dict()
     # print(target_dict)
 
-    ## Construct dictionaries for attribute categories and type (positive)
-    attribute_df = pd.read_csv(args.attribute_category_path, dtype={'Type': str})
-    attribute_category_dict = attribute_df.set_index('Content')['Category'].to_dict()
-    attribute_type_dict = attribute_df.set_index('Content')['Type'].to_dict()
-
-    ## Calculate PPL
-    print('Calculate PPL: ',args.calculate_perplexity)
-    if args.calculate_perplexity:
-        if args.api:
-            model = None
-            tokenizer = None
-        else:
-            print(torch.cuda.device_count())
-            model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map='auto', torch_dtype=torch.float16)
-            tokenizer = AutoTokenizer.from_pretrained(args.model_path, device_map='auto')
-        
-        df = calculate_perplexity(df, target_dict, model, tokenizer, prompt)
-        model_name = args.model_path.split('/')[-1]
-        target_group_name = os.path.basename(args.attribute_category_path).split('-')[0]
-        print('Target:', target_group_name)
-        df.to_csv(f"../data/{model_name}_{target_group_name}_output_{args.prompt_template}.csv")
-        
-    df_category = add_categories_type(df, attribute_category_dict, attribute_type_dict)
-    
-    ## Calculate p-value, t-value for category analysis
-    result_category = df_category.groupby(['Category', 'Type']).apply(perform_ttest)
-    # print(result_category)
-    
-    result_category_all = df_category.groupby(['Category']).apply(perform_ttest)
-    
-    
-    ## Calculate p-value, t-value for toxicity analysis
-    result_toxicity = df.groupby(['Toxicity']).apply(perform_ttest)
-    result_all = perform_ttest(df)
-    result_toxicity = result_toxicity._append(result_all, ignore_index=True)
-    result_toxicity.index = ['0', '1', 'All']
-    # print(result_toxicity)
-    
+    ## Check directory existed
     model_name = args.model_path.split('/')[-1]
     target_group_name = os.path.basename(args.attribute_category_path).split('-')[0]
-    result_category.to_csv(f"../data/{model_name}_{target_group_name}_category_{args.prompt_template}.csv")
-    result_category_all.to_csv(f"../data/{model_name}_{target_group_name}_category_all_{args.prompt_template}.csv")
-    result_toxicity.to_csv(f"../data/{model_name}_{target_group_name}_toxicity_{args.prompt_template}.csv")
+    # print('Target:', target_group_name)
+    if not os.path.exists(f"{args.result_dir}/{model_name}/{target_group_name}_{args.replace_target}"):
+        os.makedirs(f"{args.result_dir}/{model_name}/{target_group_name}_{args.replace_target}")
 
+    ## Load the model first if args.calculate_perplexity is true
+    if args.calculate_perplexity:
+        model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map='auto', torch_dtype=torch.float16)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+        
+    ## Data analysis
+    with open('prompts.json') as f:
+        prompt_dict = json.load(f)
+    for prompt_index, prompt in prompt_dict.items():
+        if prompt_index == '0':
+            prompt_with_template = ""
+        else:
+            messages = [
+                {"role": "user", "content": prompt},
+            ]
+            prompt_with_template = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+        print(prompt_with_template)
+        if args.calculate_perplexity:
+            df_with_ppl = calculate_perplexity(df, target_dict, model, tokenizer, prompt_with_template)
+            df_with_ppl.to_csv(f"{args.result_dir}/{model_name}/{target_group_name}_{args.replace_target}/{model_name}_{target_group_name}_{args.replace_target}_output_{prompt_index}.csv")
+        else:
+            df_with_ppl = pd.read_csv(f"{args.result_dir}/{model_name}/{target_group_name}_{args.replace_target}/{model_name}_{target_group_name}_{args.replace_target}_output_{prompt_index}.csv")
+        analyze_data(args, df_with_ppl)
+            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     ## files
-    parser.add_argument("--bias_sentences_path", "-bp", type=str, default="/home/u3659277/master-thesis/TWBias/data/gender/label_data_female_final_240220.csv")
-    parser.add_argument("--target_pair_path", "-tp", type=str, default="/home/u3659277/master-thesis/TWBias/data/gender/target_gender.csv")
-    parser.add_argument("--prompt_template_path", "-pt", type=str, default="/home/u3659277/master-thesis/TWBias/prompt_template/llama2.json")
-    parser.add_argument("--attribute_category_path", "-ap", type=str, default="/home/u3659277/master-thesis/TWBias/data/gender/Female-Attribute.csv")
+    parser.add_argument("--bias_sentences_path", "-bp", type=str, default="data/gender/label_data_female.csv")
+    parser.add_argument("--target_pair_path", "-tp", type=str, default="data/gender/target_gender.csv")
+    parser.add_argument("--attribute_category_path", "-ap", type=str, default="data/gender/female-Attribute.csv")
+    parser.add_argument("--result_dir", "-rd", type=str, default="result/gender")
 
     ## models
-    parser.add_argument("--model_path", "-m", default="/work/u3659277/s3-local/models/llama2-70b|tokenizer=ccw|data=l-v2|epoch=0-step=38656")
-    # parser.add_argument("--model_path", "-m", default="MediaTek-Research/Breeze-7B-Base-v0_1") 
-    
+    parser.add_argument("--model_path", "-m", default="taide/TAIDE-LX-7B-Chat")    
     
     ## config
     parser.add_argument("--origin_target", "-o", type=str, required=True)
     parser.add_argument("--replace_target", "-r", type=str, required=True)
     parser.add_argument("--calculate_perplexity", "-cppl", action="store_true")
-    parser.add_argument("--api", action="store_true")
     parser.add_argument("--target_combination", "-comb", action="store_true")
-    parser.add_argument("--prompt_template", "-p", type=str, default=None)
     
     args = parser.parse_args()
     main(args)
