@@ -1,5 +1,8 @@
 # TWBias: A Benchmark for Assessing Social Bias in Traditional Chinese Large Language Models through a Taiwan Cultural Lens
-This respository contains the official code for the EMNLP 2024 paper, *TWBias: A Benchmark for Assessing Social Bias in Traditional Chinese Large Language Models through a Taiwan Cultural Lens.*
+This respository contains the official code for the EMNLP 2024 paper, [TWBias: A Benchmark for Assessing Social Bias in Traditional Chinese Large Language Models through a Taiwan Cultural Lens](https://aclanthology.org/2024.findings-emnlp.507/).
+
+![framework image](https://imgur.com/q2M5CmB.jpg)
+
 ## Requirements
 - torch
 - transformers
